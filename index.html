@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Telegram Mini App Auth</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 16px;
+        }
+
+        .app-container {
+            width: 100%;
+            max-width: 400px;
+            background: white;
+            border-radius: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+            padding: 20px;
+        }
+
+        .mode-switch {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            background: #f0f0f0;
+            border-radius: 30px;
+            padding: 5px;
+        }
+
+        .mode-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 30px;
+            background: transparent;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .mode-btn.active {
+            background: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            color: #667eea;
+        }
+
+        .form-container {
+            display: block;
+        }
+
+        .form-container.hidden {
+            display: none;
+        }
+
+        h2 {
+            margin-bottom: 20px;
+            color: #333;
+            text-align: center;
+        }
+
+        input {
+            width: 100%;
+            padding: 15px;
+            margin-bottom: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 15px;
+            font-size: 16px;
+            outline: none;
+        }
+
+        input:focus {
+            border-color: #667eea;
+        }
+
+        button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 15px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+
+        button.secondary {
+            background: #95a5a6;
+        }
+
+        .error-message {
+            color: #ff4757;
+            font-size: 14px;
+            margin-top: -10px;
+            margin-bottom: 15px;
+            display: none;
+        }
+
+        .error-message.visible {
+            display: block;
+        }
+
+        .admin-panel, .user-panel {
+            display: none;
+        }
+
+        .admin-panel.visible, .user-panel.visible {
+            display: block;
+        }
+
+        .link-list {
+            margin-top: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 15px;
+            padding: 10px;
+        }
+
+        .link-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .link-item:last-child {
+            border-bottom: none;
+        }
+
+        .link-code {
+            font-size: 12px;
+            color: #666;
+            word-break: break-all;
+        }
+
+        .delete-link {
+            background: #ff4757;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            padding: 5px 10px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .info-bar {
+            background: #333;
+            color: white;
+            padding: 10px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            text-align: center;
+            display: none;
+        }
+
+        .info-bar.visible {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Переключатель режимов -->
+        <div class="mode-switch">
+            <button class="mode-btn active" id="modeAdminBtn">👤 Админ</button>
+            <button class="mode-btn" id="modeUserBtn">👥 Пользователь</button>
+        </div>
+
+        <!-- Контейнер для форм входа -->
+        <div id="adminFormContainer" class="form-container">
+            <h2>Вход для админа</h2>
+            <input type="password" id="adminPassword" placeholder="Сложный пароль" value="">
+            <button id="adminLoginBtn">Войти</button>
+            <div class="error-message" id="adminError">Неверный пароль</div>
+        </div>
+
+        <div id="userFormContainer" class="form-container hidden">
+            <h2>Вход для пользователя</h2>
+            <input type="text" id="username" placeholder="Username (например, Sdback)" value="Sdback">
+            <input type="text" id="userCode" placeholder="6-значный код (буквы/цифры)" maxlength="6" value="345f77">
+            <button id="userLoginBtn">Войти</button>
+            <div class="error-message" id="userError">Неверный код или пользователь</div>
+        </div>
+
+        <!-- Панель администратора (после входа) -->
+        <div id="adminPanel" class="admin-panel">
+            <div class="info-bar" id="adminInfo"></div>
+            <button id="logoutAdminBtn">🚪 Выйти</button>
+            <button id="createAdminLinkBtn">🔗 Создать ссылку для админа</button>
+            <button id="createUserLinkBtn">👤 Создать ссылку для пользователя</button>
+            
+            <h3 style="margin-top:20px;">Созданные ссылки</h3>
+            <div class="link-list" id="adminLinkList">
+                <!-- Ссылки будут здесь -->
+            </div>
+        </div>
+
+        <!-- Панель пользователя (после входа) -->
+        <div id="userPanel" class="user-panel">
+            <div class="info-bar" id="userInfo"></div>
+            <button id="logoutUserBtn">🚪 Выйти</button>
+            <p>Добро пожаловать в обычный аккаунт!</p>
+        </div>
+    </div>
+
+    <script>
+        // ==================== КОНФИГУРАЦИЯ ====================
+        const ADMIN_PASSWORD = 'A7k9pL';
+        const USERS = { 'Sdback': '345f77' };
+
+        // ЗАМЕНИТЕ НА СВОИ ДАННЫЕ:
+        const APP_BASE_URL = 'https://YOUR_GITHUB_USERNAME.github.io/REPO_NAME/';
+
+        const STORAGE_LINKS = 'telegram_links';
+        const STORAGE_SESSION = 'telegram_session';
+
+        // ==================== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ====================
+        let currentMode = 'admin';
+        let isLoggedIn = false;
+        let sessionType = null;
+        let sessionData = null;
+
+        // Элементы
+        const modeAdminBtn = document.getElementById('modeAdminBtn');
+        const modeUserBtn = document.getElementById('modeUserBtn');
+        const adminForm = document.getElementById('adminFormContainer');
+        const userForm = document.getElementById('userFormContainer');
+        const adminPanel = document.getElementById('adminPanel');
+        const userPanel = document.getElementById('userPanel');
+        const adminPassword = document.getElementById('adminPassword');
+        const adminLoginBtn = document.getElementById('adminLoginBtn');
+        const adminError = document.getElementById('adminError');
+        const username = document.getElementById('username');
+        const userCode = document.getElementById('userCode');
+        const userLoginBtn = document.getElementById('userLoginBtn');
+        const userError = document.getElementById('userError');
+        const logoutAdminBtn = document.getElementById('logoutAdminBtn');
+        const logoutUserBtn = document.getElementById('logoutUserBtn');
+        const createAdminLinkBtn = document.getElementById('createAdminLinkBtn');
+        const createUserLinkBtn = document.getElementById('createUserLinkBtn');
+        const adminLinkList = document.getElementById('adminLinkList');
+        const adminInfo = document.getElementById('adminInfo');
+        const userInfo = document.getElementById('userInfo');
+
+        // ==================== ЗАГРУЗКА ХРАНИЛИЩА ====================
+        function loadLinks() {
+            const stored = localStorage.getItem(STORAGE_LINKS);
+            return stored ? JSON.parse(stored) : [];
+        }
+
+        function saveLinks(links) {
+            localStorage.setItem(STORAGE_LINKS, JSON.stringify(links));
+        }
+
+        function loadSession() {
+            const stored = localStorage.getItem(STORAGE_SESSION);
+            if (stored) {
+                try {
+                    const session = JSON.parse(stored);
+                    if (session.type === 'admin') {
+                        isLoggedIn = true;
+                        sessionType = 'admin';
+                        showAdminPanel();
+                    } else if (session.type === 'user') {
+                        isLoggedIn = true;
+                        sessionType = 'user';
+                        sessionData = session.username;
+                        showUserPanel(session.username);
+                    }
+                } catch (e) {}
+            }
+        }
+
+        function saveSession(type, data = null) {
+            const session = { type };
+            if (type === 'user') {
+                session.username = data;
+            }
+            localStorage.setItem(STORAGE_SESSION, JSON.stringify(session));
+        }
+
+        function clearSession() {
+            localStorage.removeItem(STORAGE_SESSION);
+        }
+
+        // ==================== ПРОВЕРКА ПАРАМЕТРОВ URL ====================
+        function getUrlParameter(name) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(name);
+        }
+
+        function checkInviteCode() {
+            const code = getUrlParameter('code');
+            if (!code) return false;
+
+            const links = loadLinks();
+            const link = links.find(l => l.code === code);
+            if (link) {
+                if (link.type === 'admin') {
+                    isLoggedIn = true;
+                    sessionType = 'admin';
+                    saveSession('admin');
+                    showAdminPanel();
+                    showInfo(adminInfo, 'Вы вошли по админ-ссылке');
+                } else if (link.type === 'user') {
+                    isLoggedIn = true;
+                    sessionType = 'user';
+                    sessionData = link.username;
+                    saveSession('user', link.username);
+                    showUserPanel(link.username);
+                    showInfo(userInfo, `Вы вошли как ${link.username}`);
+                }
+                return true;
+            } else {
+                showInfo(adminInfo, 'Ссылка недействительна', true);
+                return false;
+            }
+        }
+
+        // ==================== ОТОБРАЖЕНИЕ ПАНЕЛЕЙ ====================
+        function showAdminPanel() {
+            adminForm.classList.add('hidden');
+            userForm.classList.add('hidden');
+            adminPanel.classList.add('visible');
+            userPanel.classList.remove('visible');
+            renderLinks();
+        }
+
+        function showUserPanel(username) {
+            adminForm.classList.add('hidden');
+            userForm.classList.add('hidden');
+            adminPanel.classList.remove('visible');
+            userPanel.classList.add('visible');
+            userInfo.textContent = `Вы вошли как ${username}`;
+        }
+
+        function showLoginForms() {
+            adminForm.classList.remove('hidden');
+            userForm.classList.remove('hidden');
+            adminPanel.classList.remove('visible');
+            userPanel.classList.remove('visible');
+        }
+
+        function showInfo(element, message, isError = false) {
+            element.textContent = message;
+            element.classList.add('visible');
+            if (isError) {
+                element.style.background = '#ff4757';
+            } else {
+                element.style.background = '#333';
+            }
+            setTimeout(() => {
+                element.classList.remove('visible');
+            }, 3000);
+        }
+
+        // ==================== РАБОТА СО ССЫЛКАМИ ====================
+        function generateCode() {
+            return Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+        }
+
+        function createLink(type, username = null) {
+            const code = generateCode();
+            const links = loadLinks();
+            links.push({
+                code,
+                type,
+                username: username,
+                createdAt: new Date().toISOString()
+            });
+            saveLinks(links);
+
+            // Ссылка для бота
+            const botLink = `https://t.me/BJPEbot?start=${code}`;
+            // Прямая ссылка на мини-приложение
+            const directLink = `${APP_BASE_URL}?code=${code}`;
+            
+            // Копируем ссылку для бота
+            navigator.clipboard.writeText(botLink).then(() => {
+                showInfo(adminInfo, 'Ссылка для бота скопирована!');
+            }).catch(() => {
+                showInfo(adminInfo, 'Ошибка копирования: ' + botLink, true);
+            });
+
+            renderLinks();
+        }
+
+        function deleteLink(code) {
+            let links = loadLinks();
+            links = links.filter(l => l.code !== code);
+            saveLinks(links);
+            renderLinks();
+        }
+
+        function renderLinks() {
+            const links = loadLinks();
+            adminLinkList.innerHTML = '';
+            if (links.length === 0) {
+                adminLinkList.innerHTML = '<p style="text-align:center; color:#999;">Нет созданных ссылок</p>';
+                return;
+            }
+            links.forEach(link => {
+                const div = document.createElement('div');
+                div.className = 'link-item';
+                div.innerHTML = `
+                    <div>
+                        <div style="font-weight:600;">${link.type === 'admin' ? '👑 Админ' : '👤 ' + (link.username || 'Пользователь')}</div>
+                        <div class="link-code">${link.code}</div>
+                    </div>
+                    <button class="delete-link" data-code="${link.code}">✕</button>
+                `;
+                adminLinkList.appendChild(div);
+            });
+
+            document.querySelectorAll('.delete-link').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const code = e.target.getAttribute('data-code');
+                    deleteLink(code);
+                });
+            });
+        }
+
+        // ==================== ОБРАБОТЧИКИ ВХОДА ====================
+        function handleAdminLogin() {
+            const pass = adminPassword.value;
+            if (pass === ADMIN_PASSWORD) {
+                isLoggedIn = true;
+                sessionType = 'admin';
+                saveSession('admin');
+                showAdminPanel();
+                adminError.classList.remove('visible');
+            } else {
+                adminError.classList.add('visible');
+            }
+        }
+
+        function handleUserLogin() {
+            const user = username.value.trim();
+            const code = userCode.value.trim();
+            if (USERS[user] && USERS[user] === code) {
+                isLoggedIn = true;
+                sessionType = 'user';
+                sessionData = user;
+                saveSession('user', user);
+                showUserPanel(user);
+                userError.classList.remove('visible');
+            } else {
+                userError.classList.add('visible');
+            }
+        }
+
+        // ==================== ПЕРЕКЛЮЧЕНИЕ РЕЖИМОВ ====================
+        function switchMode(mode) {
+            currentMode = mode;
+            if (mode === 'admin') {
+                modeAdminBtn.classList.add('active');
+                modeUserBtn.classList.remove('active');
+                if (!isLoggedIn || sessionType !== 'admin') {
+                    adminForm.classList.remove('hidden');
+                    userForm.classList.add('hidden');
+                } else {
+                    showAdminPanel();
+                }
+            } else {
+                modeUserBtn.classList.add('active');
+                modeAdminBtn.classList.remove('active');
+                if (!isLoggedIn || sessionType !== 'user') {
+                    userForm.classList.remove('hidden');
+                    adminForm.classList.add('hidden');
+                } else {
+                    showUserPanel(sessionData);
+                }
+            }
+        }
+
+        // ==================== ВЫХОД ====================
+        function logout() {
+            isLoggedIn = false;
+            sessionType = null;
+            sessionData = null;
+            clearSession();
+            showLoginForms();
+            switchMode(currentMode);
+        }
+
+        // ==================== ИНИЦИАЛИЗАЦИЯ ====================
+        window.onload = () => {
+            loadSession();
+            if (isLoggedIn) {
+                if (sessionType === 'admin') {
+                    showAdminPanel();
+                    switchMode('admin');
+                } else {
+                    showUserPanel(sessionData);
+                    switchMode('user');
+                }
+            } else {
+                if (!checkInviteCode()) {
+                    showLoginForms();
+                    switchMode('admin');
+                }
+            }
+
+            if (window.Telegram && Telegram.WebApp) {
+                Telegram.WebApp.ready();
+                Telegram.WebApp.expand();
+            }
+        };
+
+        // ==================== СОБЫТИЯ ====================
+        modeAdminBtn.addEventListener('click', () => switchMode('admin'));
+        modeUserBtn.addEventListener('click', () => switchMode('user'));
+
+        adminLoginBtn.addEventListener('click', handleAdminLogin);
+        adminPassword.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') handleAdminLogin();
+        });
+
+        userLoginBtn.addEventListener('click', handleUserLogin);
+        userCode.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') handleUserLogin();
+        });
+
+        logoutAdminBtn.addEventListener('click', logout);
+        logoutUserBtn.addEventListener('click', logout);
+
+        createAdminLinkBtn.addEventListener('click', () => createLink('admin'));
+        createUserLinkBtn.addEventListener('click', () => createLink('user', 'Sdback'));
+    </script>
+</body>
+</html>
