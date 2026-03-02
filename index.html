@@ -114,7 +114,7 @@
         }
         .link-list {
             margin-top: 20px;
-            max-height: 200px;
+            max-height: 300px;
             overflow-y: auto;
             border: 1px solid #ddd;
             border-radius: 15px;
@@ -130,6 +130,17 @@
         .link-item:last-child {
             border-bottom: none;
         }
+        .link-info {
+            flex: 1;
+        }
+        .link-title {
+            font-weight: 600;
+        }
+        .link-meta {
+            font-size: 11px;
+            color: #666;
+            margin-top: 4px;
+        }
         .delete {
             background: #ff4757;
             color: white;
@@ -137,6 +148,23 @@
             border-radius: 10px;
             padding: 5px 10px;
             cursor: pointer;
+            margin-left: 8px;
+        }
+        /* Радужная анимация для админ-панели */
+        .rainbow {
+            animation: rainbow 5s infinite;
+            border-radius: 20px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        @keyframes rainbow {
+            0% { background: #ff0000; }
+            17% { background: #ff8800; }
+            33% { background: #ffff00; }
+            50% { background: #00ff00; }
+            67% { background: #0088ff; }
+            83% { background: #8800ff; }
+            100% { background: #ff0000; }
         }
     </style>
 </head>
@@ -165,12 +193,14 @@
             <div class="error" id="userError">Неверные данные</div>
         </div>
 
-        <!-- Панель администратора -->
+        <!-- Панель администратора с радужным фоном -->
         <div id="adminPanel" class="panel">
-            <div class="info" id="adminInfo"></div>
-            <button id="logoutAdmin">🚪 Выйти</button>
-            <button id="createAdminLink">🔗 Создать ссылку для админа</button>
-            <button id="createUserLink">👤 Создать ссылку для пользователя</button>
+            <div class="rainbow" id="adminRainbow">
+                <div class="info" id="adminInfo"></div>
+                <button id="logoutAdmin">🚪 Выйти</button>
+                <button id="createAdminLink">🔗 Создать ссылку для админа</button>
+                <button id="createUserLink">👤 Создать ссылку для пользователя</button>
+            </div>
             <h3 style="margin-top:20px;">Созданные ссылки</h3>
             <div class="link-list" id="linkList"></div>
         </div>
@@ -312,7 +342,13 @@
         function createLink(type, user = null) {
             const code = generateCode();
             const links = loadLinks();
-            links.push({ code, type, user });
+            links.push({
+                code,
+                type,
+                user,
+                clicks: [],          // массив временных меток переходов
+                createdAt: new Date().toISOString()
+            });
             saveLinks(links);
             const botLink = `https://t.me/BJPEbot?start=${code}`;
             navigator.clipboard.writeText(botLink).then(() => {
@@ -335,13 +371,22 @@
                 linkList.innerHTML = '<p style="text-align:center;color:#999;">Нет ссылок</p>';
                 return;
             }
+            // Сортируем по дате создания (новые сверху)
+            links.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
             links.forEach(link => {
                 const div = document.createElement('div');
                 div.className = 'link-item';
+                const clickCount = link.clicks ? link.clicks.length : 0;
+                let lastClick = 'никогда';
+                if (link.clicks && link.clicks.length > 0) {
+                    const last = new Date(link.clicks[link.clicks.length-1]);
+                    lastClick = last.toLocaleString();
+                }
                 div.innerHTML = `
-                    <div>
-                        <strong>${link.type === 'admin' ? '👑 Админ' : '👤 ' + (link.user || '')}</strong>
-                        <div style="font-size:11px;color:#666;">${link.code}</div>
+                    <div class="link-info">
+                        <div class="link-title">${link.type === 'admin' ? '👑 Админ' : '👤 ' + (link.user || '')}</div>
+                        <div class="link-meta">Код: ${link.code}</div>
+                        <div class="link-meta">Переходов: ${clickCount} (последний: ${lastClick})</div>
                     </div>
                     <button class="delete" data-code="${link.code}">✕</button>
                 `;
@@ -354,7 +399,7 @@
             });
         }
 
-        // ==================== ВХОД ПО ССЫЛКЕ ====================
+        // ==================== ВХОД ПО ССЫЛКЕ (с учётом статистики) ====================
         function getUrlParam(name) {
             const params = new URLSearchParams(window.location.search);
             return params.get(name);
@@ -362,9 +407,15 @@
         function checkInvite() {
             const code = getUrlParam('code');
             if (!code) return false;
-            const links = loadLinks();
-            const link = links.find(l => l.code === code);
-            if (link) {
+            let links = loadLinks();
+            const linkIndex = links.findIndex(l => l.code === code);
+            if (linkIndex !== -1) {
+                const link = links[linkIndex];
+                // Добавляем запись о переходе
+                if (!link.clicks) link.clicks = [];
+                link.clicks.push(Date.now()); // или new Date().toISOString()
+                saveLinks(links);
+
                 if (link.type === 'admin') {
                     loggedIn = true;
                     sessionType = 'admin';
@@ -381,7 +432,8 @@
                 }
                 return true;
             } else {
-                showInfo(adminInfo, 'Ссылка недействительна', true);
+                // Код не найден (возможно, удалён)
+                showInfo(adminInfo, 'Ссылка недействительна или удалена', true);
                 return false;
             }
         }
